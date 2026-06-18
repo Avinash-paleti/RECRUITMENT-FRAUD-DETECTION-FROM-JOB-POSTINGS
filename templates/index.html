@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FraudShield — Job Fraud Detector</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; }
+  </style>
+  <!-- File reading libraries for client-side validation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+</head>
+<body style="background:#f8fafc;">
+
+<!-- Navbar -->
+<nav class="index-nav">
+  <div class="logo-text">
+    <div style="width:30px;height:30px;background:var(--brand);border-radius:7px;display:flex;align-items:center;justify-content:center;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+        <path d="M12 1L3 5v6c0 5.25 3.75 10.15 9 11.35C17.25 21.15 21 16.25 21 11V5l-9-4z"/>
+      </svg>
+    </div>
+    FraudShield
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="text-xs px-2 py-1 rounded-full font-medium" style="background:#eff6ff;color:var(--brand);">
+      AI-Powered Detection
+    </span>
+    <a href="/login" class="text-sm font-semibold px-4 py-2 rounded-lg transition-all"
+       style="background:var(--brand);color:white;text-decoration:none;">
+      Admin Login
+    </a>
+  </div>
+</nav>
+
+<!-- Hero Banner -->
+<div style="background:linear-gradient(135deg,#0f172a,#1e3a5f);padding:36px 20px;text-align:center;">
+  <p class="text-xs font-semibold tracking-widest uppercase mb-3" style="color:#60a5fa;">
+    Trusted Fraud Detection
+  </p>
+  <h1 style="font-family:'Space Grotesk',sans-serif;font-size:2rem;font-weight:700;color:white;margin:0 0 10px;">
+    Is This Job Posting Real?
+  </h1>
+  <p style="color:#94a3b8;font-size:0.95rem;max-width:520px;margin:0 auto;">
+    Paste any job description or upload a document — our AI model will detect fraud in seconds.
+  </p>
+</div>
+
+<!-- Main Content -->
+<div class="index-body">
+
+  <!-- Scan Card -->
+  <div class="scan-card">
+
+    <form action="/predict" method="POST" enctype="multipart/form-data">
+
+      <!-- Text Input -->
+      <div class="form-group">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <label class="form-label" style="display:flex;align-items:center;gap:6px;margin-bottom:0;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="color:var(--brand);">
+              <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/>
+            </svg>
+            Paste Job Description
+          </label>
+          <div style="display:flex;gap:8px;">
+            <button type="button" onclick="loadSample('genuine')"
+              style="width:auto;padding:5px 12px;font-size:0.75rem;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:6px;font-weight:600;cursor:pointer;transition:all 0.15s;">
+              Sample: Genuine
+            </button>
+            <button type="button" onclick="loadSample('fraud')"
+              style="width:auto;padding:5px 12px;font-size:0.75rem;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-weight:600;cursor:pointer;transition:all 0.15s;">
+              Sample: Fraudulent
+            </button>
+            <button type="button" onclick="clearText()"
+              style="width:auto;padding:5px 12px;font-size:0.75rem;background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:6px;font-weight:600;cursor:pointer;transition:all 0.15s;">
+              Clear
+            </button>
+          </div>
+        </div>
+        <textarea
+          id="job-text-area"
+          name="job_text"
+          class="form-input"
+          rows="6"
+          placeholder="Copy and paste the full job description here — title, responsibilities, requirements, salary details..."
+          style="resize:vertical;">{{ job_text or '' }}</textarea>
+        <p style="font-size:0.75rem;color:#94a3b8;margin-top:4px;">
+          Tip: Use the sample buttons above to test the detector instantly.
+        </p>
+      </div>
+
+      <!-- Divider -->
+      <div class="divider">or upload a file</div>
+
+      <!-- File Upload -->
+      <div class="form-group">
+        <div class="file-upload-area" id="drop-zone">
+          <input type="file" name="file" id="file-input" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"
+                 onchange="showFileName(this)"/>
+          <div id="upload-placeholder">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" style="color:#94a3b8;margin:0 auto 10px;display:block;">
+              <path d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+            </svg>
+            <p class="text-sm font-medium text-slate-500">Drag & drop or <span style="color:var(--brand);font-weight:600;">browse</span></p>
+            <p class="text-xs text-slate-400 mt-1">PDF, DOCX, XLSX, PNG, JPG — up to 10MB</p>
+          </div>
+          <div id="file-selected" style="display:none;color:var(--brand);" class="text-sm font-medium">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="color:var(--success);margin:0 auto 6px;display:block;">
+              <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>
+            </svg>
+            <span id="file-name"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- File reading status -->
+      <div id="file-reading-status" style="display:none;margin-top:-8px;margin-bottom:14px;padding:11px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" style="fill:var(--brand);flex-shrink:0;" class="spin">
+            <path d="M12 4V2A10 10 0 002 12h2a8 8 0 018-8z"/>
+          </svg>
+          <p style="margin:0;font-size:0.82rem;font-weight:600;color:var(--brand);" id="file-reading-msg">Reading file contents...</p>
+        </div>
+      </div>
+      <div id="validation-error" style="display:none;margin-bottom:14px;padding:14px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;animation:slideUp 0.3s ease;">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" style="fill:#dc2626;flex-shrink:0;margin-top:1px;">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+          </svg>
+          <div>
+            <p style="margin:0 0 3px;font-size:0.87rem;font-weight:700;color:#dc2626;" id="validation-title">Invalid Input</p>
+            <p style="margin:0;font-size:0.82rem;color:#b91c1c;" id="validation-msg">Please enter a valid job description.</p>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-primary" id="scan-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+        </svg>
+        Analyze for Fraud
+      </button>
+
+    </form>
+
+    <!-- ─── RESULT SECTION ─── -->
+    {% if prediction %}
+    <div class="result-box">
+
+      <!-- Verdict header -->
+      <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div class="flex items-center gap-3">
+          {% if fraud_prob > 50 %}
+          <div style="width:42px;height:42px;background:var(--danger-light);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" style="fill:var(--danger);">
+              <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+            </svg>
+          </div>
+          {% else %}
+          <div style="width:42px;height:42px;background:var(--success-light);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" style="fill:var(--success);">
+              <path d="M12 1L3 5v6c0 5.25 3.75 10.15 9 11.35C17.25 21.15 21 16.25 21 11V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
+            </svg>
+          </div>
+          {% endif %}
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Verdict</p>
+            <h2 style="font-family:'Space Grotesk',sans-serif;font-size:1.2rem;font-weight:700;margin:0;">{{ prediction }}</h2>
+          </div>
+        </div>
+        <span class="risk-badge {{ risk|lower }}">
+          {{ risk }} Risk
+        </span>
+      </div>
+
+      <!-- Probability bars -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:16px;">
+
+        <div>
+          <div class="flex justify-between text-xs font-semibold mb-1">
+            <span style="color:var(--danger);">Fraud Probability</span>
+            <span style="color:var(--danger);">{{ fraud_prob }}%</span>
+          </div>
+          <div class="prob-bar">
+            <div class="prob-fill fraud" style="width:{{ fraud_prob }}%;"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs font-semibold mb-1">
+            <span style="color:var(--success);">Genuine Probability</span>
+            <span style="color:var(--success);">{{ genuine_prob }}%</span>
+          </div>
+          <div class="prob-bar">
+            <div class="prob-fill genuine" style="width:{{ genuine_prob }}%;"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Tip -->
+      <p class="text-xs text-slate-400 mt-4 text-center">
+        Results are AI-generated. Always verify job postings independently.
+      </p>
+
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Feature Pills -->
+  <div class="flex flex-wrap justify-center gap-3 mt-6">
+    <div class="flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-full"
+         style="background:white;border:1px solid #e2e8f0;color:#64748b;">
+      <svg width="13" height="13" viewBox="0 0 24 24" style="fill:var(--brand);"><path d="M12 1L3 5v6c0 5.25 3.75 10.15 9 11.35C17.25 21.15 21 16.25 21 11V5l-9-4z"/></svg>
+      PDF, DOCX & Image Support
+    </div>
+    <div class="flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-full"
+         style="background:white;border:1px solid #e2e8f0;color:#64748b;">
+      <svg width="13" height="13" viewBox="0 0 24 24" style="fill:var(--brand);"><path d="M13 2.05v2.02c3.95.49 7 3.85 7 7.93 0 3.21-1.81 6-4.72 7.72L13 17v5h5l-1.22-1.22C19.91 19.07 22 15.76 22 12c0-5.18-3.95-9.45-9-9.95zM11 2.05C5.95 2.55 2 6.82 2 12c0 3.76 2.09 7.07 5.22 8.78L6 22h5v-5l-2.28 2.28C7.81 18 6 15.21 6 12c0-4.08 3.05-7.44 7-7.93V2.05z"/></svg>
+      Real-Time ML Analysis
+    </div>
+    <div class="flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-full"
+         style="background:white;border:1px solid #e2e8f0;color:#64748b;">
+      <svg width="13" height="13" viewBox="0 0 24 24" style="fill:var(--brand);"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+      Risk Level Classification
+    </div>
+  </div>
+
+</div>
+
+<script>
+function showFileName(input) {
+  if (input.files.length > 0) {
+    document.getElementById('upload-placeholder').style.display = 'none';
+    document.getElementById('file-selected').style.display = 'block';
+    document.getElementById('file-name').textContent = input.files[0].name;
+  }
+}
+
+// ── Sample job ad texts ──
+const samples = {
+  genuine: `Job Title: Software Engineer – Full Stack (Mid-Level)
+Company: TechNova Solutions Pvt. Ltd.
+Location: Hyderabad, Telangana (Hybrid – 3 days onsite)
+Employment Type: Full-Time | Experience: 2–4 Years
+Salary: ₹8,00,000 – ₹14,00,000 per annum (based on experience)
+
+About the Role:
+We are looking for a passionate Full Stack Software Engineer to join our growing product team. You will work closely with product managers, designers, and senior engineers to build scalable web applications that serve thousands of users daily.
+
+Responsibilities:
+- Design, develop, and maintain web applications using React.js and Node.js
+- Write clean, well-documented, and testable code following best practices
+- Collaborate with cross-functional teams in an Agile/Scrum environment
+- Participate in code reviews and contribute to improving engineering standards
+- Integrate third-party APIs and build RESTful backend services
+- Troubleshoot, debug, and optimize application performance
+
+Requirements:
+- Bachelor's degree in Computer Science, Engineering, or a related field
+- 2–4 years of hands-on experience with React.js, Node.js, and REST APIs
+- Proficiency in HTML5, CSS3, JavaScript (ES6+)
+- Experience with SQL/NoSQL databases (PostgreSQL, MongoDB)
+- Familiarity with Git version control and CI/CD pipelines
+- Strong problem-solving and communication skills
+
+Nice to Have:
+- Experience with AWS or Azure cloud services
+- Knowledge of Docker and microservices architecture
+- Prior experience in a product-based company
+
+Benefits:
+- Health insurance (employee + family)
+- 18 days paid leave + 10 public holidays
+- Learning & development reimbursement up to ₹25,000/year
+- Flexible working hours
+
+To Apply: Send your updated CV to careers@technovasolutions.com
+Only shortlisted candidates will be contacted. No placement agencies please.`,
+
+  fraud: `URGENT HIRING – Work From Home – Earn ₹50,000/Month GUARANTEED!
+
+Job Title: Online Data Entry / Form Filling / Copy Paste Specialist
+Location: Work From Home (Anywhere in India)
+Salary: ₹800 – ₹1,500 per hour | No experience needed | No qualification required
+Openings: 500+ positions available IMMEDIATELY
+
+Are you looking for easy money working from home? THIS IS YOUR CHANCE!
+
+We are a USA-based company hiring urgently for part-time and full-time home-based workers. No interviews. No documents. Start today!
+
+Job Duties:
+- Copy paste data from websites
+- Fill simple online forms
+- Forward emails and WhatsApp messages
+- Like and share posts on Facebook/Instagram
+
+You will earn:
+✔ ₹800 per form filled
+✔ ₹500 bonus for every referral
+✔ Weekly payment via PayTM / Google Pay / Western Union
+✔ GUARANTEED income every 7 days – no delays!
+
+Requirements:
+- Smartphone or laptop
+- Internet connection
+- 1–2 hours free per day
+- Willingness to earn money fast
+
+HOW TO APPLY:
+Pay a ONE-TIME registration fee of ₹999 only to get your work kit and login access.
+After registration you will receive your tasks within 24 hours.
+WhatsApp us NOW at +91-XXXXXXXXXX or click the link below.
+Limited seats – First come first served!
+
+NOTE: This is a 100% legitimate opportunity. Thousands of people are already earning. Don't miss out. Act fast!`
+};
+
+function loadSample(type) {
+  document.getElementById('job-text-area').value = samples[type];
+}
+
+function clearText() {
+  document.getElementById('job-text-area').value = '';
+}
+
+// ── Input Validation ──
+const JOB_KEYWORDS = [
+  // role/title words
+  'job','position','role','hiring','vacancy','opening','recruit','career',
+  'apply','application','candidate','applicant','employment','opportunity',
+  // job description sections
+  'responsibilities','duties','requirements','qualifications','skills',
+  'experience','education','degree','salary','compensation','benefits',
+  'location','remote','onsite','hybrid','full-time','part-time','contract',
+  'internship','fresher','engineer','developer','manager','analyst','designer',
+  'executive','officer','assistant','coordinator','specialist','consultant',
+  // company/HR words
+  'company','organization','team','department','office','industry','client',
+  'profile','resume','cv','interview','shortlist','contact','email','apply',
+  // common job ad verbs
+  'develop','design','manage','support','maintain','collaborate','communicate',
+  'build','create','work','join','lead','handle','ensure','provide','deliver'
+];
+
+function validateJobText(text) {
+  const trimmed = text.trim();
+
+  // 1. Empty check
+  if (!trimmed) {
+    return { valid: false, title: 'Empty Input', msg: 'Please enter a job description before analyzing.' };
+  }
+
+  // 2. Too short
+  if (trimmed.length < 40) {
+    return { valid: false, title: 'Too Short', msg: 'The text is too short to be a job posting. Please paste the full description.' };
+  }
+
+  // 3. Gibberish check — word length average
+  const words = trimmed.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+  const avgWordLen = words.reduce((s, w) => s + w.replace(/[^a-z]/g,'').length, 0) / (words.length || 1);
+  if (avgWordLen > 12) {
+    return { valid: false, title: 'Invalid Text Detected', msg: 'This looks like random or garbled text. Please paste a real job advertisement.' };
+  }
+
+  // 4. Real word ratio — how many tokens are actual English words (length 2–15)
+  const realWords = words.filter(w => /^[a-zA-Z]{2,15}$/.test(w));
+  const realRatio = realWords.length / (words.length || 1);
+  if (realRatio < 0.45) {
+    return { valid: false, title: 'Unrecognised Content', msg: 'The text contains too many random characters. Please enter a valid job posting.' };
+  }
+
+  // 5. Repetition check — if one word makes up >40% it's spam
+  const freq = {};
+  words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+  const maxFreq = Math.max(...Object.values(freq));
+  if (maxFreq / words.length > 0.4) {
+    return { valid: false, title: 'Repetitive Text', msg: 'The text appears to be repetitive or spammy. Please enter a proper job description.' };
+  }
+
+  // 6. Keyword match — must contain at least 2 job-related words
+  const lower = trimmed.toLowerCase();
+  const matched = JOB_KEYWORDS.filter(kw => lower.includes(kw));
+  if (matched.length < 2) {
+    return {
+      valid: false,
+      title: 'Not a Job Posting',
+      msg: 'This doesn\'t look like a job advertisement. Please include details like job title, responsibilities, requirements, or salary.'
+    };
+  }
+
+  return { valid: true };
+}
+
+function showValidationError(title, msg) {
+  document.getElementById('validation-title').textContent = title;
+  document.getElementById('validation-msg').textContent = msg;
+  const box = document.getElementById('validation-error');
+  box.style.display = 'block';
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function hideValidationError() {
+  document.getElementById('validation-error').style.display = 'none';
+}
+
+// Clear error when user starts editing
+document.getElementById('job-text-area').addEventListener('input', hideValidationError);
+
+// Drag & drop styling
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.borderColor = 'var(--brand)'; dz.style.background = 'var(--brand-light)'; });
+dz.addEventListener('dragleave', () => { dz.style.borderColor = '#cbd5e1'; dz.style.background = '#f8fafc'; });
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.style.borderColor = '#cbd5e1';
+  dz.style.background = '#f8fafc';
+  const fi = document.getElementById('file-input');
+  fi.files = e.dataTransfer.files;
+  showFileName(fi);
+});
+
+// Submit — validate text AND file contents before allowing submit
+document.querySelector('form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+
+  const textInput = document.getElementById('job-text-area').value;
+  const fileInput = document.getElementById('file-input');
+  const file = fileInput.files[0];
+
+  hideValidationError();
+
+  // ── Case 1: No file, no text ──
+  if (!file && !textInput.trim()) {
+    showValidationError('Nothing to Analyze', 'Please paste a job description or upload a file before submitting.');
+    return;
+  }
+
+  // ── Case 2: Text only (no file) ──
+  if (!file) {
+    const result = validateJobText(textInput);
+    if (!result.valid) {
+      showValidationError(result.title, result.msg);
+      return;
+    }
+    submitForm();
+    return;
+  }
+
+  // ── Case 3: File uploaded — extract text first, then validate ──
+  showFileStatus('Reading your file, please wait...');
+
+  try {
+    const extractedText = await extractTextFromFile(file);
+
+    hideFileStatus();
+
+    // Combine with any pasted text
+    const combined = (textInput + ' ' + extractedText).trim();
+
+    if (!extractedText.trim()) {
+      showValidationError(
+        'Could Not Read File',
+        'No readable text was found in the uploaded file. Please check the file content or paste the job description manually.'
+      );
+      return;
+    }
+
+    const result = validateJobText(combined);
+    if (!result.valid) {
+      // Give file-specific context in the message
+      showValidationError(
+        result.title,
+        result.msg + ' (extracted from your uploaded file)'
+      );
+      return;
+    }
+
+    submitForm();
+
+  } catch (err) {
+    hideFileStatus();
+    showValidationError(
+      'File Read Error',
+      'Could not process the uploaded file. Please try a different file or paste the text manually.'
+    );
+  }
+});
+
+// ── Extract text from uploaded file in the browser ──
+async function extractTextFromFile(file) {
+  const name = file.name.toLowerCase();
+  const ext  = name.split('.').pop();
+
+  if (ext === 'pdf') {
+    return await extractFromPDF(file);
+  } else if (ext === 'docx') {
+    return await extractFromDOCX(file);
+  } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+    return await extractFromXLSX(file);
+  } else if (['png','jpg','jpeg','bmp','gif','tiff','webp'].includes(ext)) {
+    return await extractFromImage(file);
+  } else if (ext === 'txt') {
+    return await file.text();
+  }
+  return '';
+}
+
+// PDF — using PDF.js
+async function extractFromPDF(file) {
+  showFileStatus('Reading PDF pages...');
+  const pdfjsLib = window['pdfjs-dist/build/pdf'];
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(' ') + ' ';
+  }
+  return text;
+}
+
+// DOCX — using mammoth.js
+async function extractFromDOCX(file) {
+  showFileStatus('Reading Word document...');
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value;
+}
+
+// XLSX / XLS / CSV — using SheetJS
+async function extractFromXLSX(file) {
+  showFileStatus('Reading spreadsheet...');
+  const arrayBuffer = await file.arrayBuffer();
+  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+  let text = '';
+  workbook.SheetNames.forEach(sheetName => {
+    const sheet = workbook.Sheets[sheetName];
+    text += XLSX.utils.sheet_to_txt(sheet) + ' ';
+  });
+  return text;
+}
+
+// Images — using Tesseract.js OCR
+async function extractFromImage(file) {
+  showFileStatus('Running OCR on image (this may take a moment)...');
+  const { data: { text } } = await Tesseract.recognize(file, 'eng', {
+    logger: m => {
+      if (m.status === 'recognizing text') {
+        showFileStatus('OCR progress: ' + Math.round(m.progress * 100) + '%...');
+      }
+    }
+  });
+  return text;
+}
+
+// ── Helpers ──
+function showFileStatus(msg) {
+  document.getElementById('file-reading-msg').textContent = msg;
+  document.getElementById('file-reading-status').style.display = 'block';
+}
+
+function hideFileStatus() {
+  document.getElementById('file-reading-status').style.display = 'none';
+}
+
+function submitForm() {
+  hideValidationError();
+  hideFileStatus();
+  const btn = document.getElementById('scan-btn');
+  btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="white" class="spin"><path d="M12 4V2A10 10 0 002 12h2a8 8 0 018-8z"/></svg> Analyzing...';
+  btn.style.opacity = '0.85';
+  document.querySelector('form').submit();
+}
+</script>
+
+</body>
+</html>
