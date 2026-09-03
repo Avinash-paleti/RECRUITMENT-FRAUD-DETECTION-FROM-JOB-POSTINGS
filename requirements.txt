@@ -10,3 +10,4 @@ wordcloud
 joblib
 scipy
 jupyter
+gunicorn
